@@ -26,6 +26,7 @@ let persons = [
     }
 ]
 
+app.use(express.static('dist'))
 app.use(express.json())
 morgan.token("body", (request, response) => {
 	if (request.method == "POST") {
@@ -99,6 +100,7 @@ app.delete("/api/persons/:id", (request, response) => {
 // _______________________________________
 
 
-const PORT = 3001
-app.listen(PORT)
-console.log("Phonebook backend running!")
+const PORT = process.env.PORT || 3001
+app.listen(PORT, () => {
+	console.log(`Phonebook backend running on port ${PORT}`)
+})
