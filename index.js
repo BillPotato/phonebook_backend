@@ -1,33 +1,10 @@
+require("dotenv").config()
 const express = require("express")
+const morgan = require("morgan")
+const Person = require("./models/Person")
+
 const app = express()
 
-const morgan = require("morgan")
-
-let persons = [
-    { 
-      "id": "1",
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": "2",
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": "3",
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": "4",
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-]
-
-app.use(express.static('dist'))
-app.use(express.json())
 morgan.token("body", (request, response) => {
 	if (request.method == "POST") {
 		// console.log("POST method detected!")
@@ -35,72 +12,126 @@ morgan.token("body", (request, response) => {
 	}
 	return " "
 })
+
+
+app.use(express.static('dist'))
+app.use(express.json())
 app.use(morgan(":method :url :status :res[content-length] - :response-time ms :body"))
 
 
 // _______________________________________
 
 
-app.get("/info", (request, response) => {
-	const message = `Phonebook has info for ${persons.length} people`
-	const now = new Date()
-	const time = now.toLocaleString()
+app.get("/info", (request, response, next) => {
+	Person.find({})
+		.then(people => {
+			const message = `Phonebook has info for ${people.length} people`
+			const now = new Date()
+			const time = now.toLocaleString()
 
-	response.write(`<div>${message}</div>`)
-	response.end(`<div>${time}</div>`)
+			response.write(`<div>${message}</div>`)
+			response.end(`<div>${time}</div>`)
+		})
+		.catch(error => next(error))
 })
 
 
-app.get("/api/persons", (request, response) => {
-	response.json(persons)
+app.get("/api/persons", (request, response, next) => {
+	Person.find({})
+		.then(people => {
+			response.json(people)
+		})	
+		.catch(error => next(error))
 })
 
 
-app.post("/api/persons", (request, response) => {
-	const newPerson = {...request.body, "id": Math.floor((Math.random() * 1e9)).toString()}
+app.post("/api/persons", (request, response, next) => {
+	const newPerson = request.body
 
-	const exists = persons.filter(person => person.name == newPerson.name).length > 0
+	// const exists = persons.filter(person => person.name == newPerson.name).length > 0
 
 	if (!newPerson.name || !newPerson.number) {
 		const error = {"error": "missing parameters"}
 		response.status(422).json(error)
 	}
-	else if (exists) {
-		const error = {"error": "name already exists"}
-		response.status(409).json(error)
-	}
+	// else if (exists) {
+	// 	const error = {"error": "name already exists"}
+	// 	response.status(409).json(error)
+	// }
 	else {
-		persons = persons.concat(newPerson)
-		response.json(newPerson)
+		person = new Person(newPerson)	
+		person.save().then(savedPerson => {
+			response.json(person)
+		})
 	}
 })
 
 
-app.get("/api/persons/:id", (request, response) => {
+app.get("/api/persons/:id", (request, response, next) => {
 	const id = request.params.id
-	const person = persons.find(person => person.id == id)
+	// console.log(`Searching for id ${id}`)
+	Person.findById(id)
+		.then(foundPerson => {
+			if (foundPerson) {
+				response.json(foundPerson)
+			}
+			else {
+				response.status(404).end()
+			}
+		})
+		.catch(error => next(error))
+})
 
-	if (person) {
-		response.json(person)
-	}
-	else {
-		response.status(404).end()
-	}
+app.put("/api/persons/:id", (request, response, next) => {
+	const {name, number} = request.body
+	Person.findById(request.params.id)
+		.then(person => {
+			person.name = name
+			person.number = number
+
+			person.save().then(updatedPerson => {
+				response.json(updatedPerson)
+			})
+		})
+		.catch(error => next(error))
 })
 
 
-app.delete("/api/persons/:id", (request, response) => {
+app.delete("/api/persons/:id", (request, response, next) => {
 	const id = request.params.id
-	persons = persons.filter(person => person.id != id)
-
-	response.status(204).end()
+	Person.findByIdAndDelete(id)
+		.then(res => {
+			response.status(204).end()
+		})
+		.catch(error => next(error))
 })
 
 
 // _______________________________________
 
 
-const PORT = process.env.PORT || 3001
+// handle unknown endpoint
+const unknownEndpointHandler = (request, response) => {
+	response.status(404).json({error: "Unknown Endpoint"})
+}
+app.use(unknownEndpointHandler)
+
+
+// handle errors
+const errorHandler = (error, request, response, next) => {
+	console.log(error)
+	if (error.name == "CastError") {
+		return response.status(400).json({error: "Invalid ID"})
+	}
+	next(error)
+}
+app.use(errorHandler)
+
+
+// _______________________________________
+
+
+const PORT = process.env.PORT
 app.listen(PORT, () => {
 	console.log(`Phonebook backend running on port ${PORT}`)
 })
